@@ -1,0 +1,360 @@
+package com.weather;
+
+public class WeatherData {
+    private String station;
+    private String month;
+    private double temperature;
+    private double precipitation;
+    private String eventType;
+
+    public WeatherData(String station, String month, 
+                       double temperature, double precipitation, 
+                       String eventType) {
+        this.station = station;
+        this.month = month;
+        this.temperature = temperature;
+        this.precipitation = precipitation;
+        this.eventType = eventType;
+    }
+
+    // Getter
+    public String getStation() { return station; }
+    public String getMonth() { return month; }
+    public double getTemperature() { return temperature; }
+    public double getPrecipitation() { return precipitation; }
+    public String getEventType() { return eventType; }
+}
+
+
+
+package com.weather;
+
+import com.google.gson.Gson;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpExchange;
+
+import java.io.*;
+import java.net.InetSocketAddress;
+import java.util.*;
+
+public class WeatherServer {
+
+    public static void main(String[] args) throws Exception {
+        HttpServer server = HttpServer.create(
+            new InetSocketAddress(8080), 0
+        );
+        server.createContext("/api/weather", new WeatherHandler());
+        server.start();
+        System.out.println("Server läuft auf Port 8080");
+    }
+
+    static class WeatherHandler implements HttpHandler {
+        private final Gson gson = new Gson();
+
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            // Nur GET erlauben
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                exchange.sendResponseHeaders(405, -1);
+                return;
+            }
+
+            // Beispieldaten erstellen
+            List<WeatherData> data = createSampleData();
+
+            // In JSON umwandeln
+            String response = gson.toJson(data);
+
+            // Antwort senden
+            exchange.getResponseHeaders()
+                    .set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.getBytes().length);
+
+            OutputStream os = exchange.getResponseBody();
+            os.write(response.getBytes());
+            os.close();
+        }
+
+        private List<WeatherData> createSampleData() {
+            List<WeatherData> data = new ArrayList<>();
+            data.add(new WeatherData("Berlin", "Januar", -2.5, 45.0, "Schnee"));
+            data.add(new WeatherData("Berlin", "Februar", 0.3, 38.0, "Regen"));
+            data.add(new WeatherData("Hamburg", "Januar", 1.2, 82.0, "Sturm"));
+            data.add(new WeatherData("Hamburg", "Februar", 2.1, 67.0, "Regen"));
+            data.add(new WeatherData("München", "Januar", -5.1, 55.0, "Schnee"));
+            data.add(new WeatherData("München", "Februar", -1.2, 42.0, "Schnee"));
+            data.add(new WeatherData("Berlin", "März", 8.4, 28.0, "Regen"));
+            data.add(new WeatherData("Hamburg", "März", 6.2, 71.0, "Sturm"));
+            data.add(new WeatherData("München", "März", 5.8, 48.0, "Regen"));
+            return data;
+        }
+    }
+}
+
+
+
+
+
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.weather</groupId>
+    <artifactId>WeatherClient</artifactId>
+    <version>1.0</version>
+
+    <dependencies>
+        <!-- Gson für JSON-Verarbeitung -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.10.1</version>
+        </dependency>
+        <!-- JFreeChart für Visualisierung -->
+        <dependency>
+            <groupId>org.jfree</groupId>
+            <artifactId>jfreechart</artifactId>
+            <version>1.5.3</version>
+        </dependency>
+    </dependencies>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+    </properties>
+</project>
+
+
+
+
+
+package com.weather;
+
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
+import java.io.*;
+import java.lang.reflect.Type;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.List;
+
+public class ApiClient {
+
+    private final String apiUrl;
+    private final Gson gson = new Gson();
+
+    public ApiClient(String apiUrl) {
+        this.apiUrl = apiUrl;
+    }
+
+    public List<WeatherData> fetchWeatherData() throws IOException {
+        // Verbindung aufbauen
+        URL url = new URL(apiUrl);
+        HttpURLConnection connection = 
+            (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+
+        // Statuscode prüfen
+        int statusCode = connection.getResponseCode();
+        if (statusCode != 200) {
+            throw new IOException(
+                "API-Fehler: Statuscode " + statusCode
+            );
+        }
+
+        // Antwort einlesen
+        BufferedReader reader = new BufferedReader(
+            new InputStreamReader(connection.getInputStream())
+        );
+        StringBuilder response = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            response.append(line);
+        }
+        reader.close();
+
+        // JSON in Java-Objekte umwandeln
+        Type listType = new TypeToken<List<WeatherData>>(){}.getType();
+        return gson.fromJson(response.toString(), listType);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+package com.weather;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class DataProcessor {
+
+    // Durchschnittstemperatur pro Station
+    public Map<String, Double> avgTempByStation(
+            List<WeatherData> data) {
+        return data.stream()
+            .collect(Collectors.groupingBy(
+                WeatherData::getStation,
+                Collectors.averagingDouble(WeatherData::getTemperature)
+            ));
+    }
+
+    // Nur Datensätze mit hohem Niederschlag filtern
+    public List<WeatherData> filterHighPrecipitation(
+            List<WeatherData> data, double threshold) {
+        return data.stream()
+            .filter(d -> d.getPrecipitation() > threshold)
+            .collect(Collectors.toList());
+    }
+
+    // Gruppierung nach Ereignistyp
+    public Map<String, Long> countByEventType(
+            List<WeatherData> data) {
+        return data.stream()
+            .collect(Collectors.groupingBy(
+                WeatherData::getEventType,
+                Collectors.counting()
+            ));
+    }
+
+    // Durchschnittsniederschlag pro Monat
+    public Map<String, Double> avgPrecipByMonth(
+            List<WeatherData> data) {
+        return data.stream()
+            .collect(Collectors.groupingBy(
+                WeatherData::getMonth,
+                Collectors.averagingDouble(WeatherData::getPrecipitation)
+            ));
+    }
+}
+
+
+
+
+
+
+
+
+
+package com.weather;
+
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartFrame;
+import org.jfree.chart.JFreeChart;
+import org.jfree.data.category.DefaultCategoryDataset;
+import org.jfree.data.general.DefaultPieDataset;
+
+import java.util.Map;
+
+public class WeatherChart {
+
+    // Balkendiagramm: Durchschnittstemperatur pro Station
+    public void showBarChart(Map<String, Double> data, String title) {
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+        data.forEach((station, temp) ->
+            dataset.addValue(temp, "Temperatur (°C)", station)
+        );
+
+        JFreeChart chart = ChartFactory.createBarChart(
+            title,
+            "Station",
+            "Temperatur (°C)",
+            dataset
+        );
+
+        ChartFrame frame = new ChartFrame(title, chart);
+        frame.pack();
+        frame.setVisible(true);
+    }
+
+    // Kreisdiagramm: Ereignistypen
+    public void showPieChart(Map<String, Long> data, String title) {
+        DefaultPieDataset dataset = new DefaultPieDataset();
+        data.forEach(dataset::setValue);
+
+        JFreeChart chart = ChartFactory.createPieChart(
+            title,
+            dataset,
+            true, true, false
+        );
+
+        ChartFrame frame = new ChartFrame(title, chart);
+        frame.pack();
+        frame.setVisible(true);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+package com.weather;
+
+import java.util.List;
+import java.util.Map;
+
+public class Main {
+    public static void main(String[] args) {
+        try {
+            // 1. Daten über API abrufen
+            ApiClient client = new ApiClient(
+                "http://localhost:8080/api/weather"
+            );
+            List<WeatherData> weatherData = client.fetchWeatherData();
+            System.out.println(
+                "Erfolgreich abgerufen: " + weatherData.size() 
+                + " Datensätze"
+            );
+
+            // 2. Daten verarbeiten
+            DataProcessor processor = new DataProcessor();
+
+            Map<String, Double> avgTemp = 
+                processor.avgTempByStation(weatherData);
+            System.out.println(
+                "\nDurchschnittstemperatur pro Station:"
+            );
+            avgTemp.forEach((s, t) -> 
+                System.out.printf("  %s: %.1f°C%n", s, t)
+            );
+
+            Map<String, Long> eventCount = 
+                processor.countByEventType(weatherData);
+            System.out.println("\nEreignisse nach Typ:");
+            eventCount.forEach((e, c) -> 
+                System.out.printf("  %s: %d%n", e, c)
+            );
+
+            List<WeatherData> highPrecip = 
+                processor.filterHighPrecipitation(weatherData, 60.0);
+            System.out.println(
+                "\nStarkniederschlag (>60mm): " 
+                + highPrecip.size() + " Ereignisse"
+            );
+
+            // 3. Visualisierung
+            WeatherChart chart = new WeatherChart();
+            chart.showBarChart(avgTemp, 
+                "Durchschnittstemperatur pro Station");
+            chart.showPieChart(eventCount, 
+                "Verteilung der Wetterereignisse");
+
+        } catch (Exception e) {
+            System.err.println("Fehler: " + e.getMessage());
+        }
+    }
+}
