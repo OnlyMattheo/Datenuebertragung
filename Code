@@ -1,0 +1,457 @@
+package com.example.weather;
+
+/**
+ * Datenklasse (POJO) für ein Schadenereignis-Set einer Stadt in einem Quartal.
+ * Repräsentiert die Anzahl versicherungsrelevanter Wetterereignisse.
+ */
+public class WeatherData {
+
+    // Ort des Wetterereignisses (z. B. "Berlin", "Hamburg", "München")
+    private String city;
+
+    // Beobachtungszeitraum (z. B. "Q1 2024" für erstes Quartal)
+    private String quarter;
+
+    // Anzahl der Hagelereignisse mit Korngröße >= 2 cm im Quartal
+    private int hailEvents;
+
+    // Anzahl der Überschwemmungsereignisse im Quartal
+    private int floodEvents;
+
+    // Anzahl der Sturm-/Orkanereignisse (Windstärke >= 8 Bft)
+    private int stormEvents;
+
+    // Anzahl der Starkregenereignisse (Niederschlag >= 25 mm/h)
+    private int heavyRainEvents;
+
+    // Konstruktor zur Initialisierung aller Felder
+    public WeatherData(String city, String quarter, int hailEvents,
+                       int floodEvents, int stormEvents, int heavyRainEvents) {
+        this.city = city;
+        this.quarter = quarter;
+        this.hailEvents = hailEvents;
+        this.floodEvents = floodEvents;
+        this.stormEvents = stormEvents;
+        this.heavyRainEvents = heavyRainEvents;
+    }
+
+    // Getter-Methoden — nötig, damit Gson die Felder serialisieren kann
+    public String getCity() { return city; }
+    public String getQuarter() { return quarter; }
+    public int getHailEvents() { return hailEvents; }
+    public int getFloodEvents() { return floodEvents; }
+    public int getStormEvents() { return stormEvents; }
+    public int getHeavyRainEvents() { return heavyRainEvents; }
+}
+
+
+
+
+
+
+
+
+
+package com.example.weather;
+
+import com.google.gson.Gson;
+import com.sun.net.httpserver.HttpServer;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Lokaler REST-konformer HTTP-Server, der Wetter-Schadenereignisse
+ * als JSON-Repräsentation über die Ressource /api/weather bereitstellt.
+ *
+ * Entspricht Level 2 des Richardson Maturity Models:
+ *  - eigene Ressourcen-URI
+ *  - korrekte HTTP-Methoden (GET erlaubt, sonst 405)
+ *  - aussagekräftige Statuscodes (200, 405)
+ */
+public class WeatherServer {
+
+    public static void main(String[] args) throws IOException {
+        // HTTP-Server auf Port 8080 erstellen
+        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+
+        // Endpunkt /api/weather registrieren
+        server.createContext("/api/weather", exchange -> {
+
+            // Nur GET-Anfragen sind erlaubt (REST-Prinzip: sichere und idempotente Methoden)
+            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                // Statuscode 405 = Method Not Allowed
+                exchange.sendResponseHeaders(405, -1);
+                return;
+            }
+
+            // Beispieldaten erzeugen — fest definiert, um reproduzierbar zu sein
+            List<WeatherData> data = createSampleData();
+
+            // Java-Objekte mit Gson in JSON-String umwandeln (Serialisierung)
+            String json = new Gson().toJson(data);
+
+            // HTTP-Header setzen: Content-Type beschreibt, dass die Antwort JSON ist
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+
+            // Statuscode 200 (OK) und Länge der Antwort senden
+            exchange.sendResponseHeaders(200, json.getBytes().length);
+
+            // JSON-Daten in den Antwort-Stream schreiben
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(json.getBytes());
+            }
+        });
+
+        // Server starten
+        server.start();
+        System.out.println("WeatherServer läuft auf http://localhost:8080/api/weather");
+    }
+
+    /**
+     * Erzeugt einen festen Datensatz mit Schadenereignissen pro Stadt und Quartal.
+     * Werte sind so gewählt, dass klare Unterschiede zwischen den Städten erkennbar sind:
+     *  - Berlin: viele Hagelereignisse (Hagelallee Brandenburg)
+     *  - Hamburg: viele Überschwemmungen und Stürme (Küstennähe)
+     *  - München: gemäßigt, weniger Schäden insgesamt
+     */
+    private static List<WeatherData> createSampleData() {
+        List<WeatherData> data = new ArrayList<>();
+
+        // Berlin — Hagelschwerpunkt
+        data.add(new WeatherData("Berlin",  "Q1 2024",  6,  2,  4,  3));
+        data.add(new WeatherData("Berlin",  "Q2 2024", 12,  3,  5,  7));
+        data.add(new WeatherData("Berlin",  "Q3 2024", 14,  4,  3,  5));
+        data.add(new WeatherData("Berlin",  "Q4 2024",  4,  2,  6,  4));
+
+        // Hamburg — Sturm- und Überschwemmungsschwerpunkt
+        data.add(new WeatherData("Hamburg", "Q1 2024",  2,  6,  9,  8));
+        data.add(new WeatherData("Hamburg", "Q2 2024",  3,  8, 10,  9));
+        data.add(new WeatherData("Hamburg", "Q3 2024",  4,  7,  8,  7));
+        data.add(new WeatherData("Hamburg", "Q4 2024",  2,  9, 12, 10));
+
+        // München — geringere Schadenfrequenz insgesamt
+        data.add(new WeatherData("München", "Q1 2024",  3,  1,  3,  2));
+        data.add(new WeatherData("München", "Q2 2024",  5,  2,  4,  3));
+        data.add(new WeatherData("München", "Q3 2024",  6,  2,  3,  4));
+        data.add(new WeatherData("München", "Q4 2024",  2,  1,  4,  2));
+
+        return data;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+package com.example.weather;
+
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.lang.reflect.Type;
+import java.util.List;
+
+/**
+ * Client zum Abruf der Wetterdaten von der lokalen REST API.
+ * Übernimmt den HTTP-Request, die Statuscode-Prüfung und die JSON-Deserialisierung.
+ */
+public class ApiClient {
+
+    // URL der Wetter-Ressource des lokalen Servers
+    private static final String API_URL = "http://localhost:8080/api/weather";
+
+    /**
+     * Ruft die Wetterdaten vom Server ab und gibt sie als typisierte Java-Liste zurück.
+     */
+    public List<WeatherData> fetchWeatherData() throws IOException {
+        // Verbindung zur API-URL aufbauen
+        URL url = new URL(API_URL);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+        // HTTP-Methode auf GET setzen (REST-konformer Lesezugriff)
+        conn.setRequestMethod("GET");
+
+        // Statuscode prüfen — nur bei 200 OK darf die Antwort verarbeitet werden
+        int statusCode = conn.getResponseCode();
+        if (statusCode != 200) {
+            throw new IOException("Fehler beim Abruf der API. Statuscode: " + statusCode);
+        }
+
+        // Antwort zeilenweise einlesen
+        StringBuilder json = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(conn.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                json.append(line);
+            }
+        }
+
+        // JSON in eine Liste von WeatherData-Objekten umwandeln (Deserialisierung).
+        // TypeToken ist nötig, weil Java's Generics zur Laufzeit gelöscht werden.
+        Type listType = new TypeToken<List<WeatherData>>() {}.getType();
+        return new Gson().fromJson(json.toString(), listType);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+package com.example.weather;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * Verarbeitet die abgerufenen Wetterdaten mithilfe der Java Stream-API.
+ * Liefert versicherungsrelevante Auswertungen pro Stadt.
+ */
+public class DataProcessor {
+
+    /**
+     * Summiert die Hagelereignisse pro Stadt über alle Quartale.
+     * Ergebnis: z. B. {Berlin=36, Hamburg=11, München=16}
+     * → Grundlage für die Hagel-Versicherungsprämie
+     */
+    public Map<String, Integer> totalHailByCity(List<WeatherData> data) {
+        return data.stream()
+                .collect(Collectors.groupingBy(
+                        WeatherData::getCity,
+                        Collectors.summingInt(WeatherData::getHailEvents)
+                ));
+    }
+
+    /**
+     * Summiert die Überschwemmungsereignisse pro Stadt.
+     * → Grundlage für die Elementarschadenversicherung
+     */
+    public Map<String, Integer> totalFloodsByCity(List<WeatherData> data) {
+        return data.stream()
+                .collect(Collectors.groupingBy(
+                        WeatherData::getCity,
+                        Collectors.summingInt(WeatherData::getFloodEvents)
+                ));
+    }
+
+    /**
+     * Summiert die Sturm-/Orkanereignisse pro Stadt.
+     * → Grundlage für die Sturm-Versicherungsprämie
+     */
+    public Map<String, Integer> totalStormsByCity(List<WeatherData> data) {
+        return data.stream()
+                .collect(Collectors.groupingBy(
+                        WeatherData::getCity,
+                        Collectors.summingInt(WeatherData::getStormEvents)
+                ));
+    }
+
+    /**
+     * Summiert die Starkregenereignisse pro Stadt.
+     * → Grundlage für die Wasserschaden-Versicherung
+     */
+    public Map<String, Integer> totalHeavyRainByCity(List<WeatherData> data) {
+        return data.stream()
+                .collect(Collectors.groupingBy(
+                        WeatherData::getCity,
+                        Collectors.summingInt(WeatherData::getHeavyRainEvents)
+                ));
+    }
+
+    /**
+     * Berechnet die Gesamtanzahl aller versicherungsrelevanten Schadenereignisse
+     * pro Stadt — als Indikator für das Gesamt-Schadenrisiko.
+     */
+    public Map<String, Integer> totalDamageEventsByCity(List<WeatherData> data) {
+        return data.stream()
+                .collect(Collectors.groupingBy(
+                        WeatherData::getCity,
+                        Collectors.summingInt(d ->
+                                d.getHailEvents() + d.getFloodEvents()
+                              + d.getStormEvents() + d.getHeavyRainEvents()
+                        )
+                ));
+    }
+
+    /**
+     * Filtert Datensätze mit besonders vielen Schadenereignissen
+     * (Schwellenwert für besonders schadensträchtige Quartale).
+     */
+    public List<WeatherData> filterCriticalQuarters(List<WeatherData> data, int threshold) {
+        return data.stream()
+                .filter(d -> (d.getHailEvents() + d.getFloodEvents()
+                            + d.getStormEvents() + d.getHeavyRainEvents()) >= threshold)
+                .collect(Collectors.toList());
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+package com.example.weather;
+
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartFrame;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.data.category.DefaultCategoryDataset;
+
+import java.util.Map;
+
+/**
+ * Visualisiert die ausgewerteten Schadenereignisse mit JFreeChart.
+ */
+public class WeatherChart {
+
+    /**
+     * Zeigt ein gruppiertes Balkendiagramm, das alle vier Schadensarten pro Stadt
+     * direkt vergleichbar darstellt — die Hauptgrundlage für die Prämienkalkulation.
+     */
+    public void showDamageComparisonChart(Map<String, Integer> hail,
+                                           Map<String, Integer> floods,
+                                           Map<String, Integer> storms,
+                                           Map<String, Integer> heavyRain) {
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+
+        // Für jede Stadt jeweils einen Balken pro Schadensart einfügen
+        for (String city : hail.keySet()) {
+            dataset.addValue(hail.get(city),      "Hagel",        city);
+            dataset.addValue(floods.get(city),    "Überschwemmung", city);
+            dataset.addValue(storms.get(city),    "Sturm/Orkan",  city);
+            dataset.addValue(heavyRain.get(city), "Starkregen",   city);
+        }
+
+        // Diagramm-Objekt erstellen
+        JFreeChart chart = ChartFactory.createBarChart(
+                "Versicherungsrelevante Schadenereignisse 2024 (nach Stadt)",
+                "Stadt",
+                "Anzahl Ereignisse",
+                dataset,
+                PlotOrientation.VERTICAL,
+                true,   // Legende anzeigen
+                true,   // Tooltips
+                false   // keine URLs
+        );
+
+        // Diagramm in einem eigenen Fenster anzeigen
+        ChartFrame frame = new ChartFrame("Schadenvergleich", chart);
+        frame.pack();
+        frame.setVisible(true);
+    }
+
+    /**
+     * Zeigt das Gesamtschadenaufkommen pro Stadt als einfaches Balkendiagramm.
+     * Macht die Risikorangfolge der Städte sofort sichtbar.
+     */
+    public void showTotalDamageChart(Map<String, Integer> totalDamage) {
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+
+        for (Map.Entry<String, Integer> entry : totalDamage.entrySet()) {
+            dataset.addValue(entry.getValue(), "Gesamtschäden", entry.getKey());
+        }
+
+        JFreeChart chart = ChartFactory.createBarChart(
+                "Gesamt-Schadenereignisse 2024 pro Stadt",
+                "Stadt",
+                "Summe aller Ereignisse",
+                dataset
+        );
+
+        ChartFrame frame = new ChartFrame("Gesamtschäden", chart);
+        frame.pack();
+        frame.setVisible(true);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+package com.example.weather;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Hauptklasse — orchestriert den gesamten Ablauf:
+ * 1. Daten von der REST API abrufen
+ * 2. Daten verarbeiten (Stream-API)
+ * 3. Ergebnisse in der Konsole und als Diagramme darstellen
+ */
+public class Main {
+
+    public static void main(String[] args) throws Exception {
+
+        // Schritt 1: Daten vom REST-Server abrufen
+        ApiClient client = new ApiClient();
+        List<WeatherData> data = client.fetchWeatherData();
+        System.out.println("Es wurden " + data.size() + " Datensätze geladen.\n");
+
+        // Schritt 2: Daten verarbeiten
+        DataProcessor processor = new DataProcessor();
+        Map<String, Integer> hail      = processor.totalHailByCity(data);
+        Map<String, Integer> floods    = processor.totalFloodsByCity(data);
+        Map<String, Integer> storms    = processor.totalStormsByCity(data);
+        Map<String, Integer> heavyRain = processor.totalHeavyRainByCity(data);
+        Map<String, Integer> total     = processor.totalDamageEventsByCity(data);
+
+        // Konsolenausgabe — versicherungsrelevante Auswertung
+        System.out.println("=== Schadenereignisse 2024 pro Stadt ===");
+        System.out.println("Hagelereignisse:        " + hail);
+        System.out.println("Überschwemmungen:       " + floods);
+        System.out.println("Sturm/Orkan-Ereignisse: " + storms);
+        System.out.println("Starkregenereignisse:   " + heavyRain);
+        System.out.println("Gesamt-Schadenanzahl:   " + total);
+
+        // Filter: besonders schadensträchtige Quartale (>= 20 Ereignisse)
+        System.out.println("\n=== Quartale mit kritischer Schadenhäufung (>= 20 Ereignisse) ===");
+        processor.filterCriticalQuarters(data, 20).forEach(d ->
+                System.out.println(d.getCity() + " " + d.getQuarter()
+                        + ": Hagel=" + d.getHailEvents()
+                        + ", Flut=" + d.getFloodEvents()
+                        + ", Sturm=" + d.getStormEvents()
+                        + ", Starkregen=" + d.getHeavyRainEvents())
+        );
+
+        // Schritt 3: Diagramme anzeigen
+        WeatherChart chart = new WeatherChart();
+        chart.showDamageComparisonChart(hail, floods, storms, heavyRain);
+        chart.showTotalDamageChart(total);
+    }
+}
