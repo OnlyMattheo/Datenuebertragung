@@ -1,0 +1,4 @@
+You can copy&paste your saves to the www/save folder of newer game versions, if you download the full game for an update.
+The .global file is needed for the preview of the saves in the loading screen. Without the .global file, you won't see your save files.
+
+I made a video about using update files and moving save files: https://www.youtube.com/watch?v=yFXqZE_jQng
